@@ -213,7 +213,11 @@ def show_overview(ada_metrics, taa_metrics):
     with col2:
         fig = go.Figure(data=go.Pie(
             labels=['Containment', 'Manual Review', 'Feedback'],
-            values=[taa_metrics['containment_actions'], taa_metrics['manual_reviews'], 206],
+            values=[
+                taa_metrics['containment_actions'],
+                taa_metrics['manual_reviews'],
+                max(0, taa_metrics.get('alerts_to_taa', 0) - taa_metrics['containment_actions'] - taa_metrics['manual_reviews'])
+            ],
             hole=0.4,
             marker_colors=['#ff6b6b', '#ffd43b', '#51cf66']
         ))
@@ -241,7 +245,7 @@ def show_ada_analytics(ada_metrics, recent_alerts):
         """, unsafe_allow_html=True)
     
     with col2:
-        detection_rate = (ada_metrics['anomalies_detected'] / ada_metrics['total_alerts']) * 100
+        detection_rate = (ada_metrics['anomalies_detected'] / ada_metrics['total_alerts']) * 100 if ada_metrics['total_alerts'] > 0 else 0
         st.markdown(f"""
         <div class="metric-card">
             <h4>📊 Detection Rate</h4>
