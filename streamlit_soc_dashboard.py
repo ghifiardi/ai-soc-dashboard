@@ -304,9 +304,10 @@ def show_ada_analytics(ada_metrics, recent_alerts):
     with col1:
         try:
             last_alert = ada_metrics.get('last_alert')
-            last_alert_dt = pd.to_datetime(last_alert)
-            last_alert_py = last_alert_dt.to_pydatetime() if hasattr(last_alert_dt, 'to_pydatetime') else last_alert_dt
-            minutes_ago = max(0, int((datetime.now() - last_alert_py).total_seconds() / 60))
+            last_alert_dt = pd.to_datetime(last_alert, utc=True)
+            now_utc = pd.Timestamp.now(tz='UTC')
+            delta = now_utc - last_alert_dt
+            minutes_ago = max(0, int(delta.total_seconds() / 60))
         except Exception:
             minutes_ago = 5
         st.markdown(
