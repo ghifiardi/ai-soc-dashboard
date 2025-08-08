@@ -306,7 +306,11 @@ def show_overview(ada_metrics, taa_metrics):
     with col2:
         fig = go.Figure(data=go.Pie(
             labels=['Containment', 'Manual Review', 'Feedback'],
-            values=[taa_metrics['containment_actions'], taa_metrics['manual_reviews'], 206],
+            values=[
+                taa_metrics['containment_actions'],
+                taa_metrics['manual_reviews'],
+                max(0, taa_metrics.get('alerts_to_taa', 0) - taa_metrics['containment_actions'] - taa_metrics['manual_reviews'])
+            ],
             hole=0.4,
             marker_colors=['#ff6b6b', '#ffd43b', '#51cf66']
         ))
@@ -326,7 +330,14 @@ def show_ada_analytics(ada_metrics, recent_alerts):
     
     with col1:
         status_text = "✅ ADA Status: LIVE" if ada_metrics.get('is_live') else "🟡 ADA Status: MOCK DATA"
-        minutes_ago = int((datetime.now() - ada_metrics['last_alert']).total_seconds() / 60) if hasattr(ada_metrics['last_alert'], 'total_seconds') else 5
+        try:
+            last_alert = ada_metrics.get('last_alert')
+            last_alert_dt = pd.to_datetime(last_alert)
+            # Convert to Python datetime if it's a pandas/NumPy timestamp
+            last_alert_py = last_alert_dt.to_pydatetime() if hasattr(last_alert_dt, 'to_pydatetime') else last_alert_dt
+            minutes_ago = max(0, int((datetime.now() - last_alert_py).total_seconds() / 60))
+        except Exception:
+            minutes_ago = 5
         st.markdown(f"""
         <div class="success-card">
             <h4>{status_text}</h4>

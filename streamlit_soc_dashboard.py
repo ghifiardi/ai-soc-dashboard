@@ -15,7 +15,10 @@ import os
 from datetime import datetime, timedelta
 import time
 import requests
-from google.cloud import bigquery
+try:
+    from google.cloud import bigquery  # type: ignore
+except Exception:
+    bigquery = None  # type: ignore
 import numpy as np
 
 # Configure Streamlit page
@@ -81,6 +84,8 @@ class SOCDashboard:
                 self.bq_client = bigquery.Client.from_service_account_info(credentials_info)
             else:
                 # For local development
+                if bigquery is None:
+                    raise RuntimeError("google-cloud-bigquery not installed")
                 self.bq_client = bigquery.Client(project='chronicle-dev-2be9')
             self.bq_available = True
         except Exception as e:
@@ -282,7 +287,7 @@ def show_overview(ada_metrics, taa_metrics):
             labels=['Containment', 'Manual Review', 'Feedback'],
             values=[taa_metrics['containment_actions'], 
                    taa_metrics['manual_reviews'],
-                   taa_metrics['alerts_to_taa'] - taa_metrics['containment_actions'] - taa_metrics['manual_reviews']],
+                   max(0, taa_metrics['alerts_to_taa'] - taa_metrics['containment_actions'] - taa_metrics['manual_reviews'])],
             hole=0.4,
             marker_colors=['#ff6b6b', '#ffd43b', '#51cf66']
         ))
@@ -297,13 +302,21 @@ def show_ada_analytics(ada_metrics, recent_alerts):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("""
+        try:
+            last_alert = ada_metrics.get('last_alert')
+            last_alert_dt = pd.to_datetime(last_alert)
+            last_alert_py = last_alert_dt.to_pydatetime() if hasattr(last_alert_dt, 'to_pydatetime') else last_alert_dt
+            minutes_ago = max(0, int((datetime.now() - last_alert_py).total_seconds() / 60))
+        except Exception:
+            minutes_ago = 5
+        st.markdown(
+        f"""
         <div class="success-card">
             <h4>✅ ADA Status: ACTIVE</h4>
             <p>Processing real SIEM data from BigQuery</p>
-            <p>Last alert: {} minutes ago</p>
+            <p>Last alert: {minutes_ago} minutes ago</p>
         </div>
-        """.format(int((datetime.now() - ada_metrics['last_alert']).total_seconds() / 60)), 
+        """,
         unsafe_allow_html=True)
     
     with col2:
