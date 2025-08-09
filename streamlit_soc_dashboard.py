@@ -49,14 +49,14 @@ if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
     st.sidebar.subheader("🔗 BigQuery Settings")
     
     # Project and dataset configuration
-    bq_project = st.sidebar.text_input("Project ID", help="Your Google Cloud Project ID")
-    bq_dataset = st.sidebar.text_input("Dataset", value="security_logs", help="BigQuery dataset name")
-    bq_table = st.sidebar.text_input("Table", value="security_events", help="BigQuery table name")
+    bq_project = st.sidebar.text_input("Project ID", value="chronicle-dev-2be9", help="Your Google Cloud Project ID")
+    bq_dataset = st.sidebar.text_input("Dataset", value="gatra_database", help="BigQuery dataset name")
+    bq_table = st.sidebar.text_input("Table", value="siem_events", help="BigQuery table name")
     
     # Authentication method
     auth_method = st.sidebar.radio(
         "Authentication",
-        ["Service Account JSON", "Application Default Credentials"],
+        ["Application Default Credentials", "Service Account JSON"],
         help="How to authenticate with BigQuery"
     )
     
@@ -82,11 +82,33 @@ if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
         if st.sidebar.button("Test BigQuery Connection"):
             with st.spinner("Testing BigQuery connection..."):
                 try:
-                    success = test_bigquery_connection(bq_project, bq_dataset, bq_table, auth_method, uploaded_key if auth_method == "Service Account JSON" else None)
-                    if success:
-                        st.sidebar.success("✅ BigQuery connection successful!")
+                    # Simple connection test
+                    if auth_method == "Application Default Credentials":
+                        client = bigquery.Client(project=bq_project)
                     else:
-                        st.sidebar.error("❌ BigQuery connection failed")
+                        if uploaded_key:
+                            key_data = json.loads(uploaded_key.getvalue())
+                            credentials = service_account.Credentials.from_service_account_info(key_data)
+                            client = bigquery.Client(credentials=credentials, project=bq_project)
+                        else:
+                            st.sidebar.error("Please upload service account key")
+                            client = None
+                    
+                    if client:
+                        # Test query
+                        query = f"""
+                        SELECT COUNT(*) as row_count
+                        FROM `{bq_project}.{bq_dataset}.{bq_table}`
+                        LIMIT 1
+                        """
+                        
+                        query_job = client.query(query)
+                        results = query_job.result()
+                        
+                        for row in results:
+                            st.sidebar.success(f"✅ BigQuery connection successful!")
+                            st.sidebar.info(f"📊 Table has {row.row_count:,} rows")
+                        
                 except Exception as e:
                     st.sidebar.error(f"❌ Connection error: {str(e)}")
 
@@ -111,48 +133,23 @@ auto_refresh = st.sidebar.checkbox("Auto-refresh (10s)", value=False)
 
 st.caption("✅ Sidebar configured successfully!")
 
-# BigQuery functions
-def get_bigquery_client(auth_method, service_account_key=None):
-    """Initialize BigQuery client with proper authentication"""
-    if auth_method == "Service Account JSON" and service_account_key:
-        # Parse the uploaded JSON key
-        key_data = json.loads(service_account_key.getvalue())
-        credentials = service_account.Credentials.from_service_account_info(key_data)
-        return bigquery.Client(credentials=credentials, project=key_data['project_id'])
-    else:
-        # Use Application Default Credentials
-        return bigquery.Client()
-
-def test_bigquery_connection(project_id, dataset_id, table_id, auth_method, service_account_key=None):
-    """Test BigQuery connection and table access"""
+# BigQuery data fetching functions
+def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_account_key=None, limit=100, hours=24):
+    """Fetch data from BigQuery"""
     try:
-        client = get_bigquery_client(auth_method, service_account_key)
+        # Initialize client
+        if auth_method == "Application Default Credentials":
+            client = bigquery.Client(project=project_id)
+        else:
+            if service_account_key:
+                key_data = json.loads(service_account_key.getvalue())
+                credentials = service_account.Credentials.from_service_account_info(key_data)
+                client = bigquery.Client(credentials=credentials, project=project_id)
+            else:
+                return pd.DataFrame(), {}
         
-        # Test query
-        query = f"""
-        SELECT COUNT(*) as row_count
-        FROM `{project_id}.{dataset_id}.{table_id}`
-        LIMIT 1
-        """
-        
-        query_job = client.query(query)
-        results = query_job.result()
-        
-        for row in results:
-            st.sidebar.info(f"📊 Table has {row.row_count} rows")
-        
-        return True
-    except Exception as e:
-        st.sidebar.error(f"Connection test failed: {str(e)}")
-        return False
-
-def fetch_bigquery_security_events(project_id, dataset_id, table_id, auth_method, service_account_key=None, limit=100, hours=24):
-    """Fetch security events from BigQuery"""
-    try:
-        client = get_bigquery_client(auth_method, service_account_key)
-        
-        # Flexible query that adapts to different table schemas
-        query = f"""
+        # Fetch events
+        events_query = f"""
         SELECT *
         FROM `{project_id}.{dataset_id}.{table_id}`
         WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
@@ -160,49 +157,30 @@ def fetch_bigquery_security_events(project_id, dataset_id, table_id, auth_method
         LIMIT {limit}
         """
         
-        query_job = client.query(query)
-        results = query_job.result()
+        events_df = client.query(events_query).to_dataframe()
         
-        # Convert to DataFrame
-        df = results.to_dataframe()
-        return df
-        
-    except Exception as e:
-        st.error(f"BigQuery query failed: {str(e)}")
-        return pd.DataFrame()
-
-def get_bigquery_metrics(project_id, dataset_id, table_id, auth_method, service_account_key=None, hours=24):
-    """Get metrics from BigQuery for dashboard"""
-    try:
-        client = get_bigquery_client(auth_method, service_account_key)
-        
-        # Metrics query
-        query = f"""
+        # Get metrics
+        metrics_query = f"""
         SELECT 
             COUNT(*) as total_events,
-            COUNTIF(severity = 'Critical') as critical_events,
-            COUNTIF(severity = 'High') as high_events,
             COUNT(DISTINCT source_ip) as unique_sources
         FROM `{project_id}.{dataset_id}.{table_id}`
         WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
         """
         
-        query_job = client.query(query)
-        results = query_job.result()
-        
-        for row in results:
-            return {
+        metrics_result = client.query(metrics_query).result()
+        metrics = {}
+        for row in metrics_result:
+            metrics = {
                 'total_events': row.total_events,
-                'critical_events': row.critical_events,
-                'high_events': row.high_events,
                 'unique_sources': row.unique_sources
             }
         
-        return {}
+        return events_df, metrics
         
     except Exception as e:
-        st.error(f"BigQuery metrics query failed: {str(e)}")
-        return {}
+        st.error(f"BigQuery error: {str(e)}")
+        return pd.DataFrame(), {}
 
 # Mock data generators
 def generate_telemetry_data():
@@ -301,16 +279,10 @@ if "📡 Telemetry Ingestion" in sections:
                 uploaded_key_var = uploaded_key if 'uploaded_key' in locals() else None
                 auth_method_var = auth_method if 'auth_method' in locals() else "Application Default Credentials"
                 
-                df_events = fetch_bigquery_security_events(
+                df_events, metrics = fetch_bigquery_data(
                     bq_project, bq_dataset, bq_table, 
                     auth_method_var, uploaded_key_var, 
                     bq_limit if 'bq_limit' in locals() else 100,
-                    bq_hours if 'bq_hours' in locals() else 24
-                )
-                
-                metrics = get_bigquery_metrics(
-                    bq_project, bq_dataset, bq_table,
-                    auth_method_var, uploaded_key_var,
                     bq_hours if 'bq_hours' in locals() else 24
                 )
                 
@@ -319,11 +291,11 @@ if "📡 Telemetry Ingestion" in sections:
                 with col1:
                     st.metric("Total Events", metrics.get('total_events', 0), "🔴 BigQuery")
                 with col2:
-                    st.metric("Critical Alerts", metrics.get('critical_events', 0), "🔴 BigQuery")
-                with col3:
-                    st.metric("High Priority", metrics.get('high_events', 0), "🔴 BigQuery")
-                with col4:
                     st.metric("Unique Sources", metrics.get('unique_sources', 0), "🔴 BigQuery")
+                with col3:
+                    st.metric("Data Source", "BigQuery", "🟢 Connected")
+                with col4:
+                    st.metric("Table Rows", f"{len(df_events):,}", "Live Data")
                     
             except Exception as e:
                 st.error(f"BigQuery connection error: {str(e)}")
@@ -379,14 +351,17 @@ if "📡 Telemetry Ingestion" in sections:
     
     # Display events table
     st.subheader("Recent Security Events")
-    st.dataframe(df_events, use_container_width=True)
-    
-    # Severity distribution chart
-    if 'severity' in df_events.columns:
-        severity_counts = df_events['severity'].value_counts()
-        fig = px.pie(values=severity_counts.values, names=severity_counts.index, 
-                     title="Event Severity Distribution")
-        st.plotly_chart(fig, use_container_width=True)
+    if not df_events.empty:
+        st.dataframe(df_events, use_container_width=True)
+        
+        # Severity distribution chart (if severity column exists)
+        if 'severity' in df_events.columns:
+            severity_counts = df_events['severity'].value_counts()
+            fig = px.pie(values=severity_counts.values, names=severity_counts.index, 
+                         title="Event Severity Distribution")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No events found. Check your data source configuration.")
     
     st.markdown("---")
 
