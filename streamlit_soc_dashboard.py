@@ -21,6 +21,7 @@ import streamlit as st
 st.set_page_config(page_title="🧠 AI-SOC Command Center", page_icon="🛡️", layout="wide")
 st.set_option("client.showErrorDetails", True)
 st.caption(f"App initialized at {datetime.utcnow().isoformat()}Z")
+st.title("🧠 AI-SOC Command Center")
 
 # Simple styling
 st.markdown(
@@ -236,11 +237,19 @@ class Dashboard:
 
 def main() -> None:
     dash = Dashboard()
+    st.caption("Reached main()")
     dash.render_header()
+    st.caption("Rendered header")
 
     st.sidebar.title("🛡️ SOC Command Center")
-    source = st.sidebar.radio("Telemetry Source", ["Mock", "BigQuery"], horizontal=True)
+    try:
+        source = st.sidebar.radio("Telemetry Source", ["Mock", "BigQuery"])  # avoid horizontal kw for max compatibility
+    except Exception as e:
+        st.warning("Sidebar radio failed; defaulting to Mock")
+        st.exception(e)
+        source = "Mock"
     dash.data_source = source
+    st.caption(f"Sidebar ready • Source={source}")
     if source == "BigQuery":
         with st.sidebar.expander("BigQuery Settings", expanded=False):
             project = st.text_input("GCP Project", value=secret_get("bq_project", "chronicle-dev-2be9"))
