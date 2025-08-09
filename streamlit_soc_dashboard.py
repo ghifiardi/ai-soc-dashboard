@@ -83,10 +83,22 @@ if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
             try:
                 st.sidebar.info("🔄 Initializing BigQuery client...")
                 
-                # Simple connection test
+                # Try different authentication methods
+                client = None
                 if auth_method == "Application Default Credentials":
-                    client = bigquery.Client(project=bq_project)
-                    st.sidebar.info("✅ Client initialized with ADC")
+                    try:
+                        # Try multiple ways to initialize client
+                        client = bigquery.Client(project=bq_project)
+                        st.sidebar.info("✅ Client initialized with ADC")
+                    except Exception as adc_error:
+                        st.sidebar.warning(f"ADC failed: {str(adc_error)}")
+                        try:
+                            # Try without explicit project
+                            client = bigquery.Client()
+                            st.sidebar.info("✅ Client initialized with default ADC")
+                        except Exception as default_error:
+                            st.sidebar.error(f"Default ADC also failed: {str(default_error)}")
+                            st.sidebar.error("💡 Try using Service Account JSON instead")
                 else:
                     if uploaded_key:
                         key_data = json.loads(uploaded_key.getvalue())
@@ -95,7 +107,6 @@ if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
                         st.sidebar.info("✅ Client initialized with Service Account")
                     else:
                         st.sidebar.error("❌ Please upload service account key")
-                        client = None
                 
                 if client:
                     st.sidebar.info("🔍 Testing table access...")
@@ -107,26 +118,51 @@ if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
                     LIMIT 1
                     """
                     
-                    # Configure job with timeout
-                    job_config = bigquery.QueryJobConfig()
-                    job_config.job_timeout_ms = 30000  # 30 seconds timeout
-                    
-                    query_job = client.query(query, job_config=job_config)
                     st.sidebar.info("⏳ Executing query...")
                     
-                    results = query_job.result(timeout=30)  # 30 second timeout
+                    # Configure job with timeout
+                    job_config = bigquery.QueryJobConfig()
+                    job_config.job_timeout_ms = 15000  # 15 seconds timeout
+                    
+                    query_job = client.query(query, job_config=job_config)
+                    results = query_job.result(timeout=15)  # 15 second timeout
                     
                     for row in results:
                         st.sidebar.success(f"🎉 BigQuery connection successful!")
                         st.sidebar.success(f"📊 Table has {row.row_count:,} rows")
                         st.sidebar.success(f"🔗 Ready to fetch real SIEM data!")
+                        # Store success in session state
+                        st.session_state.bq_connected = True
+                        st.session_state.bq_config = {
+                            'project': bq_project,
+                            'dataset': bq_dataset, 
+                            'table': bq_table,
+                            'auth_method': auth_method,
+                            'uploaded_key': uploaded_key
+                        }
                     
             except Exception as e:
                 st.sidebar.error(f"❌ Connection failed: {str(e)}")
-                st.sidebar.error("💡 Try checking your gcloud auth or table permissions")
+                st.sidebar.error("💡 Try using Service Account JSON authentication")
+                st.sidebar.info("🔧 Or run locally with: streamlit run streamlit_soc_dashboard.py")
 
 elif data_source == "BigQuery" and not BIGQUERY_AVAILABLE:
     st.sidebar.error("❌ BigQuery libraries not installed. Install with: pip install google-cloud-bigquery")
+
+# Skip connection test - try direct data loading
+if data_source == "BigQuery" and BIGQUERY_AVAILABLE and bq_project and bq_dataset and bq_table:
+    if st.sidebar.button("🚀 Skip Test & Load Data Directly"):
+        st.sidebar.info("⚡ Attempting direct data load...")
+        st.session_state.bq_connected = True
+        st.session_state.bq_config = {
+            'project': bq_project,
+            'dataset': bq_dataset, 
+            'table': bq_table,
+            'auth_method': auth_method,
+            'uploaded_key': uploaded_key if 'uploaded_key' in locals() else None
+        }
+        st.sidebar.success("✅ Skipping test - will try to load data directly!")
+        st.rerun()
 
 # Section selection
 sections = st.sidebar.multiselect(
