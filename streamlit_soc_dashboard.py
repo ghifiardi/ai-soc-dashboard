@@ -285,7 +285,10 @@ def main() -> None:
         st.rerun()
 
 
-if __name__ == "__main__":
+try:
     main()
+except Exception as e:
+    st.error("App failed to start")
+    st.exception(e)
 
 
