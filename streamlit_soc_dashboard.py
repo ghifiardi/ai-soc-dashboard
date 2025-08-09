@@ -765,12 +765,11 @@ def main():
         st.rerun()
 
 
-if __name__ == "__main__":
-    try:
-        st.write("")  # ensure something renders even if header fails
-        main()
-    except Exception as app_error:
-        st.error("App failed to start")
-        st.exception(app_error)
+try:
+    # Always invoke main in Streamlit runtime (some environments may not set __name__ == "__main__")
+    main()
+except Exception as app_error:
+    st.error("App failed to start")
+    st.exception(app_error)
 
 
