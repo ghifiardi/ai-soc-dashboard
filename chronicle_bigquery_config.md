@@ -3,8 +3,8 @@
 ## Your BigQuery Setup
 
 **Project ID**: `chronicle-dev-2be9`  
-**Dataset**: `security_logs`  
-**Table**: `security_events`
+**Dataset**: `gatra_database`  
+**Table**: `siem_events`
 
 ## Quick Setup Steps
 
@@ -38,8 +38,8 @@ In your SOC dashboard sidebar:
 ```
 Data Source: BigQuery
 Project ID: chronicle-dev-2be9
-Dataset: security_logs
-Table: security_events
+Dataset: gatra_database
+Table: siem_events
 Authentication: Service Account JSON (upload the key file)
 ```
 
@@ -56,25 +56,23 @@ Once connected, you'll see:
 ### Test Connection:
 ```sql
 SELECT COUNT(*) as total_events
-FROM `chronicle-dev-2be9.security_logs.security_events`
+FROM `chronicle-dev-2be9.gatra_database.siem_events`
 ```
 
-### View Recent Critical Events:
+### View Recent Events:
 ```sql
-SELECT timestamp, event_id, severity, event_type, source_ip, description
-FROM `chronicle-dev-2be9.security_logs.security_events`
-WHERE severity = 'Critical'
+SELECT *
+FROM `chronicle-dev-2be9.gatra_database.siem_events`
 ORDER BY timestamp DESC
+LIMIT 10
 ```
 
 ### Get Metrics (what the dashboard uses):
 ```sql
 SELECT 
     COUNT(*) as total_events,
-    COUNTIF(severity = 'Critical') as critical_events,
-    COUNTIF(severity = 'High') as high_events,
     COUNT(DISTINCT source_ip) as unique_sources
-FROM `chronicle-dev-2be9.security_logs.security_events`
+FROM `chronicle-dev-2be9.gatra_database.siem_events`
 WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 ```
 
@@ -112,10 +110,10 @@ VALUES
 
 ```
 ✅ Project ID: chronicle-dev-2be9
-✅ Dataset: security_logs  
-✅ Table: security_events
-✅ Sample Data: 12 events across all severity levels
-✅ Time Range: Last 2 hours (adjustable to 24h in dashboard)
+✅ Dataset: gatra_database  
+✅ Table: siem_events
+✅ Using your existing SIEM data
+✅ Time Range: Configurable (1-168 hours)
 ✅ Authentication: Service Account JSON required
 ```
 
