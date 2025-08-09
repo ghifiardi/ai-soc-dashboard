@@ -294,8 +294,10 @@ def main() -> None:
         st.rerun()
 
 
+st.caption("Bottom-of-file reached; about to call main()")
 try:
     main()
+    st.caption("main() returned")
 except Exception as e:
     st.error("App failed to start")
     st.exception(e)
