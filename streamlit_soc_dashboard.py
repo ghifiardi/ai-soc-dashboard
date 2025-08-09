@@ -216,10 +216,21 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
         # Initialize client
         if auth_method == "Application Default Credentials":
             try:
-                client = bigquery.Client(project=project_id)
-                st.success("✅ BigQuery client initialized with ADC")
+                # Try Streamlit Secrets first (for cloud deployment)
+                if "gcp_service_account" in st.secrets:
+                    st.info("🔑 Using Streamlit Secrets for authentication")
+                    credentials = service_account.Credentials.from_service_account_info(
+                        st.secrets["gcp_service_account"]
+                    )
+                    client = bigquery.Client(credentials=credentials, project=project_id)
+                    st.success("✅ BigQuery client initialized with Streamlit Secrets")
+                else:
+                    # Fallback to ADC (for local development)
+                    client = bigquery.Client(project=project_id)
+                    st.success("✅ BigQuery client initialized with ADC")
             except Exception as e:
-                st.error(f"❌ ADC authentication failed: {str(e)}")
+                st.error(f"❌ Authentication failed: {str(e)}")
+                st.info("💡 For Streamlit Cloud, add your service account to Secrets")
                 return pd.DataFrame(), {}
         else:
             if service_account_key:
