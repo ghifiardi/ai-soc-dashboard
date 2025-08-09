@@ -7,6 +7,16 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 import random
+import json
+import os
+
+# BigQuery imports (optional)
+try:
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+    BIGQUERY_AVAILABLE = True
+except ImportError:
+    BIGQUERY_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -24,11 +34,64 @@ st.sidebar.title("🛡️ SOC Command Center")
 st.sidebar.subheader("Dashboard Controls")
 
 # Data source selection
+data_source_options = ["Mock Data", "Sample Database"]
+if BIGQUERY_AVAILABLE:
+    data_source_options.append("BigQuery")
+
 data_source = st.sidebar.radio(
     "Data Source",
-    ["Mock Data", "Sample Database"],
+    data_source_options,
     help="Choose your data source for the dashboard"
 )
+
+# BigQuery configuration
+if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
+    st.sidebar.subheader("🔗 BigQuery Settings")
+    
+    # Project and dataset configuration
+    bq_project = st.sidebar.text_input("Project ID", help="Your Google Cloud Project ID")
+    bq_dataset = st.sidebar.text_input("Dataset", value="security_logs", help="BigQuery dataset name")
+    bq_table = st.sidebar.text_input("Table", value="security_events", help="BigQuery table name")
+    
+    # Authentication method
+    auth_method = st.sidebar.radio(
+        "Authentication",
+        ["Service Account JSON", "Application Default Credentials"],
+        help="How to authenticate with BigQuery"
+    )
+    
+    if auth_method == "Service Account JSON":
+        uploaded_key = st.sidebar.file_uploader(
+            "Upload Service Account Key",
+            type=['json'],
+            help="Upload your service account JSON key file"
+        )
+        
+        if uploaded_key:
+            st.sidebar.success("✅ Service account key uploaded")
+    else:
+        st.sidebar.info("💡 Using Application Default Credentials")
+    
+    # Query configuration
+    with st.sidebar.expander("Query Settings"):
+        bq_limit = st.number_input("Row Limit", min_value=10, max_value=10000, value=100)
+        bq_hours = st.number_input("Hours of Data", min_value=1, max_value=168, value=24)
+    
+    # Connection test
+    if bq_project and bq_dataset and bq_table:
+        if st.sidebar.button("Test BigQuery Connection"):
+            with st.spinner("Testing BigQuery connection..."):
+                try:
+                    success = test_bigquery_connection(bq_project, bq_dataset, bq_table, auth_method, uploaded_key if auth_method == "Service Account JSON" else None)
+                    if success:
+                        st.sidebar.success("✅ BigQuery connection successful!")
+                    else:
+                        st.sidebar.error("❌ BigQuery connection failed")
+                except Exception as e:
+                    st.sidebar.error(f"❌ Connection error: {str(e)}")
+
+elif data_source == "BigQuery" and not BIGQUERY_AVAILABLE:
+    st.sidebar.error("❌ BigQuery libraries not installed. Install with: pip install google-cloud-bigquery")
 
 # Section selection
 sections = st.sidebar.multiselect(
@@ -47,6 +110,99 @@ sections = st.sidebar.multiselect(
 auto_refresh = st.sidebar.checkbox("Auto-refresh (10s)", value=False)
 
 st.caption("✅ Sidebar configured successfully!")
+
+# BigQuery functions
+def get_bigquery_client(auth_method, service_account_key=None):
+    """Initialize BigQuery client with proper authentication"""
+    if auth_method == "Service Account JSON" and service_account_key:
+        # Parse the uploaded JSON key
+        key_data = json.loads(service_account_key.getvalue())
+        credentials = service_account.Credentials.from_service_account_info(key_data)
+        return bigquery.Client(credentials=credentials, project=key_data['project_id'])
+    else:
+        # Use Application Default Credentials
+        return bigquery.Client()
+
+def test_bigquery_connection(project_id, dataset_id, table_id, auth_method, service_account_key=None):
+    """Test BigQuery connection and table access"""
+    try:
+        client = get_bigquery_client(auth_method, service_account_key)
+        
+        # Test query
+        query = f"""
+        SELECT COUNT(*) as row_count
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        LIMIT 1
+        """
+        
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        for row in results:
+            st.sidebar.info(f"📊 Table has {row.row_count} rows")
+        
+        return True
+    except Exception as e:
+        st.sidebar.error(f"Connection test failed: {str(e)}")
+        return False
+
+def fetch_bigquery_security_events(project_id, dataset_id, table_id, auth_method, service_account_key=None, limit=100, hours=24):
+    """Fetch security events from BigQuery"""
+    try:
+        client = get_bigquery_client(auth_method, service_account_key)
+        
+        # Flexible query that adapts to different table schemas
+        query = f"""
+        SELECT *
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+        """
+        
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        # Convert to DataFrame
+        df = results.to_dataframe()
+        return df
+        
+    except Exception as e:
+        st.error(f"BigQuery query failed: {str(e)}")
+        return pd.DataFrame()
+
+def get_bigquery_metrics(project_id, dataset_id, table_id, auth_method, service_account_key=None, hours=24):
+    """Get metrics from BigQuery for dashboard"""
+    try:
+        client = get_bigquery_client(auth_method, service_account_key)
+        
+        # Metrics query
+        query = f"""
+        SELECT 
+            COUNT(*) as total_events,
+            COUNTIF(severity = 'Critical') as critical_events,
+            COUNTIF(severity = 'High') as high_events,
+            COUNT(DISTINCT source_ip) as unique_sources
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+        """
+        
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        for row in results:
+            return {
+                'total_events': row.total_events,
+                'critical_events': row.critical_events,
+                'high_events': row.high_events,
+                'unique_sources': row.unique_sources
+            }
+        
+        return {}
+        
+    except Exception as e:
+        st.error(f"BigQuery metrics query failed: {str(e)}")
+        return {}
 
 # Mock data generators
 def generate_telemetry_data():
@@ -137,7 +293,66 @@ if "📡 Telemetry Ingestion" in sections:
     st.header("📡 Telemetry Ingestion & Validation")
     
     # Get data based on selected source
-    if data_source == "Sample Database":
+    if data_source == "BigQuery" and BIGQUERY_AVAILABLE:
+        # Check if BigQuery is configured
+        if 'bq_project' in locals() and bq_project and bq_dataset and bq_table:
+            try:
+                # Get BigQuery data
+                uploaded_key_var = uploaded_key if 'uploaded_key' in locals() else None
+                auth_method_var = auth_method if 'auth_method' in locals() else "Application Default Credentials"
+                
+                df_events = fetch_bigquery_security_events(
+                    bq_project, bq_dataset, bq_table, 
+                    auth_method_var, uploaded_key_var, 
+                    bq_limit if 'bq_limit' in locals() else 100,
+                    bq_hours if 'bq_hours' in locals() else 24
+                )
+                
+                metrics = get_bigquery_metrics(
+                    bq_project, bq_dataset, bq_table,
+                    auth_method_var, uploaded_key_var,
+                    bq_hours if 'bq_hours' in locals() else 24
+                )
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Events", metrics.get('total_events', 0), "🔴 BigQuery")
+                with col2:
+                    st.metric("Critical Alerts", metrics.get('critical_events', 0), "🔴 BigQuery")
+                with col3:
+                    st.metric("High Priority", metrics.get('high_events', 0), "🔴 BigQuery")
+                with col4:
+                    st.metric("Unique Sources", metrics.get('unique_sources', 0), "🔴 BigQuery")
+                    
+            except Exception as e:
+                st.error(f"BigQuery connection error: {str(e)}")
+                df_events = generate_telemetry_data()
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Events", "1,247", "+23 (Mock - BQ Error)")
+                with col2:
+                    st.metric("Critical Alerts", "12", "+3 (Mock - BQ Error)")
+                with col3:
+                    st.metric("Validation Rate", "94.2%", "+1.2% (Mock)")
+                with col4:
+                    st.metric("False Positives", "5.8%", "-0.8% (Mock)")
+        else:
+            st.warning("⚠️ Please configure BigQuery settings in the sidebar")
+            df_events = generate_telemetry_data()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Events", "1,247", "+23 (Mock - Not Configured)")
+            with col2:
+                st.metric("Critical Alerts", "12", "+3 (Mock - Not Configured)")
+            with col3:
+                st.metric("Validation Rate", "94.2%", "+1.2% (Mock)")
+            with col4:
+                st.metric("False Positives", "5.8%", "-0.8% (Mock)")
+    
+    elif data_source == "Sample Database":
         df_events = generate_sample_database_data()
         col1, col2, col3, col4 = st.columns(4)
         
