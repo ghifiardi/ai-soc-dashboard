@@ -7,6 +7,18 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 import random
+import os
+import sys
+
+# Add current directory to path to import data_sources
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from data_sources import RealDataManager
+    REAL_DATA_AVAILABLE = True
+except ImportError:
+    REAL_DATA_AVAILABLE = False
+    st.warning("Real data sources not available. Using mock data only.")
 
 # Page configuration
 st.set_page_config(
@@ -19,9 +31,86 @@ st.set_page_config(
 st.title("🧠 AI-SOC Command Center")
 st.caption("Dashboard loaded successfully!")
 
+# Initialize data manager
+if REAL_DATA_AVAILABLE:
+    if 'data_manager' not in st.session_state:
+        st.session_state.data_manager = RealDataManager()
+
 # Sidebar
 st.sidebar.title("🛡️ SOC Command Center")
 st.sidebar.subheader("Dashboard Controls")
+
+# Data source selection
+data_source = st.sidebar.radio(
+    "Data Source",
+    ["Mock Data", "Real Database", "Log Files", "API Integration"],
+    help="Choose your data source for the dashboard"
+)
+
+# Database setup section
+if data_source == "Real Database" and REAL_DATA_AVAILABLE:
+    st.sidebar.subheader("🗄️ Database Setup")
+    
+    db_type = st.sidebar.selectbox("Database Type", ["SQLite", "PostgreSQL", "MySQL"])
+    
+    if db_type == "SQLite":
+        if st.sidebar.button("Setup Sample Database"):
+            with st.spinner("Creating sample database..."):
+                if st.session_state.data_manager.setup_sample_database():
+                    st.sidebar.success("Sample database created!")
+                    st.rerun()
+    
+    elif db_type == "PostgreSQL":
+        with st.sidebar.expander("PostgreSQL Settings"):
+            pg_host = st.text_input("Host", value="localhost")
+            pg_port = st.number_input("Port", value=5432)
+            pg_db = st.text_input("Database")
+            pg_user = st.text_input("Username")
+            pg_pass = st.text_input("Password", type="password")
+            
+            if st.button("Connect PostgreSQL"):
+                if st.session_state.data_manager.db_connector.connect_postgresql(
+                    pg_host, pg_port, pg_db, pg_user, pg_pass
+                ):
+                    st.success("Connected to PostgreSQL!")
+    
+    elif db_type == "MySQL":
+        with st.sidebar.expander("MySQL Settings"):
+            my_host = st.text_input("Host", value="localhost")
+            my_port = st.number_input("Port", value=3306)
+            my_db = st.text_input("Database")
+            my_user = st.text_input("Username")
+            my_pass = st.text_input("Password", type="password")
+            
+            if st.button("Connect MySQL"):
+                if st.session_state.data_manager.db_connector.connect_mysql(
+                    my_host, my_port, my_db, my_user, my_pass
+                ):
+                    st.success("Connected to MySQL!")
+
+# API Integration settings
+elif data_source == "API Integration" and REAL_DATA_AVAILABLE:
+    st.sidebar.subheader("🔗 API Settings")
+    
+    api_service = st.sidebar.selectbox("API Service", ["AbuseIPDB", "VirusTotal", "AlienVault OTX"])
+    api_key = st.sidebar.text_input("API Key", type="password", 
+                                   help="Enter your API key for threat intelligence")
+    
+    if api_key:
+        st.sidebar.success(f"✅ {api_service} API configured")
+
+# Log file settings
+elif data_source == "Log Files" and REAL_DATA_AVAILABLE:
+    st.sidebar.subheader("📄 Log File Settings")
+    
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload Log File",
+        type=['json', 'csv', 'log', 'txt'],
+        help="Upload your security log files"
+    )
+    
+    if uploaded_file:
+        st.sidebar.success(f"✅ File uploaded: {uploaded_file.name}")
 
 # Section selection
 sections = st.sidebar.multiselect(
@@ -64,27 +153,114 @@ def generate_telemetry_data():
 if "📡 Telemetry Ingestion" in sections:
     st.header("📡 Telemetry Ingestion & Validation")
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Get data based on selected source
+    if data_source == "Real Database" and REAL_DATA_AVAILABLE:
+        try:
+            df_events = st.session_state.data_manager.get_security_events()
+            metrics = st.session_state.data_manager.get_real_time_metrics()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Events", metrics.get('total_events', 0), "+Real Data")
+            with col2:
+                st.metric("Critical Alerts", metrics.get('critical_events', 0), "+Real Data")
+            with col3:
+                st.metric("High Risk Assets", metrics.get('high_risk_assets', 0), "+Real Data")
+            with col4:
+                st.metric("Database Status", "🟢 Connected", "Live")
+                
+        except Exception as e:
+            st.error(f"Database error: {e}")
+            df_events = generate_telemetry_data()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Events", "1,247", "+23 (Mock)")
+            with col2:
+                st.metric("Critical Alerts", "12", "+3 (Mock)")
+            with col3:
+                st.metric("Validation Rate", "94.2%", "+1.2% (Mock)")
+            with col4:
+                st.metric("False Positives", "5.8%", "-0.8% (Mock)")
     
-    with col1:
-        st.metric("Total Events", "1,247", "+23")
-    with col2:
-        st.metric("Critical Alerts", "12", "+3")
-    with col3:
-        st.metric("Validation Rate", "94.2%", "+1.2%")
-    with col4:
-        st.metric("False Positives", "5.8%", "-0.8%")
+    elif data_source == "Log Files" and REAL_DATA_AVAILABLE and 'uploaded_file' in locals():
+        try:
+            # Process uploaded file
+            if uploaded_file.name.endswith('.json'):
+                # Save uploaded file temporarily
+                with open("temp_log.json", "wb") as f:
+                    f.write(uploaded_file.getvalue())
+                df_events = st.session_state.data_manager.log_connector.parse_json_logs("temp_log.json")
+                os.remove("temp_log.json")  # Clean up
+            elif uploaded_file.name.endswith('.csv'):
+                df_events = pd.read_csv(uploaded_file)
+            else:
+                st.warning("Unsupported file format. Using mock data.")
+                df_events = generate_telemetry_data()
+                
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Log Events", len(df_events), f"+{uploaded_file.name}")
+            with col2:
+                st.metric("File Size", f"{uploaded_file.size} bytes", "Uploaded")
+            with col3:
+                st.metric("File Type", uploaded_file.type, "Detected")
+            with col4:
+                st.metric("Status", "🟢 Processed", "Live")
+                
+        except Exception as e:
+            st.error(f"File processing error: {e}")
+            df_events = generate_telemetry_data()
     
-    # Event table
-    df_events = generate_telemetry_data()
+    elif data_source == "API Integration" and REAL_DATA_AVAILABLE and 'api_key' in locals() and api_key:
+        # Use mock data enriched with API data
+        df_events = generate_telemetry_data()
+        
+        try:
+            # Enrich with threat intelligence
+            df_events = st.session_state.data_manager.enrich_with_threat_intel(df_events, api_key)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Events", len(df_events), "+API Enhanced")
+            with col2:
+                st.metric("API Service", api_service, "🟢 Active")
+            with col3:
+                st.metric("Enriched IPs", len([x for x in df_events.get('ip_reputation_score', []) if pd.notna(x)]), "Threat Intel")
+            with col4:
+                malicious_count = len([x for x in df_events.get('is_malicious', []) if x])
+                st.metric("Malicious IPs", malicious_count, "🔴 Detected")
+        except Exception as e:
+            st.error(f"API enrichment error: {e}")
+    
+    else:
+        # Default to mock data
+        df_events = generate_telemetry_data()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Events", "1,247", "+23 (Mock)")
+        with col2:
+            st.metric("Critical Alerts", "12", "+3 (Mock)")
+        with col3:
+            st.metric("Validation Rate", "94.2%", "+1.2% (Mock)")
+        with col4:
+            st.metric("False Positives", "5.8%", "-0.8% (Mock)")
+    
+    # Display events table
     st.subheader("Recent Security Events")
-    st.dataframe(df_events, use_container_width=True)
-    
-    # Severity distribution chart
-    severity_counts = df_events['severity'].value_counts()
-    fig = px.pie(values=severity_counts.values, names=severity_counts.index, 
-                 title="Event Severity Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+    if not df_events.empty:
+        st.dataframe(df_events, use_container_width=True)
+        
+        # Severity distribution chart
+        if 'severity' in df_events.columns:
+            severity_counts = df_events['severity'].value_counts()
+            fig = px.pie(values=severity_counts.values, names=severity_counts.index, 
+                         title="Event Severity Distribution")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No events found. Check your data source configuration.")
     
     st.markdown("---")
 
