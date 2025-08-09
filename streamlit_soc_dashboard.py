@@ -163,6 +163,16 @@ class EnhancedSOCDashboard:
         self.bq_client = None
         self.bq_available = False
         self.setup_bigquery()
+
+    @staticmethod
+    def _secret(key: str, default: Any = None) -> Any:
+        """Safe access to st.secrets[key] with a default fallback."""
+        try:
+            if hasattr(st, "secrets") and key in st.secrets:
+                return st.secrets[key]
+        except Exception:
+            pass
+        return default
         
     def initialize_state(self):
         """Initialize session state"""
@@ -206,12 +216,12 @@ class EnhancedSOCDashboard:
 
         try:
             # Preferred: service account provided via Streamlit secrets
-            if "bigquery_credentials" in st.secrets:
-                credentials_info = st.secrets["bigquery_credentials"]
+            credentials_info = self._secret("bigquery_credentials")
+            if credentials_info:
                 self.bq_client = self._bigquery_module.Client.from_service_account_info(credentials_info)
             else:
                 # Fallback: Application Default Credentials
-                default_project = st.secrets.get("bq_project", None) if hasattr(st, "secrets") else None
+                default_project = self._secret("bq_project")
                 self.bq_client = self._bigquery_module.Client(project=default_project)
             self.bq_available = True
         except Exception:
@@ -219,9 +229,9 @@ class EnhancedSOCDashboard:
             self.bq_available = False
 
     def _default_bq_table(self) -> str:
-        project = self.bigquery_config.get("project") or (st.secrets.get("bq_project", None) if hasattr(st, "secrets") else None) or "chronicle-dev-2be9"
-        dataset = self.bigquery_config.get("dataset") or (st.secrets.get("bq_dataset", None) if hasattr(st, "secrets") else None) or "soc_data"
-        table = self.bigquery_config.get("table") or (st.secrets.get("bq_table", None) if hasattr(st, "secrets") else None) or "processed_alerts"
+        project = self.bigquery_config.get("project") or self._secret("bq_project") or "chronicle-dev-2be9"
+        dataset = self.bigquery_config.get("dataset") or self._secret("bq_dataset") or "soc_data"
+        table = self.bigquery_config.get("table") or self._secret("bq_table") or "processed_alerts"
         return f"`{project}.{dataset}.{table}`"
 
     def fetch_bigquery_events(self) -> List[Dict[str, Any]]:
@@ -671,9 +681,12 @@ def main():
     
     if data_source == "BigQuery":
         with st.sidebar.expander("BigQuery Settings", expanded=False):
-            bq_project = st.text_input("GCP Project", value=(st.secrets.get("bq_project", "chronicle-dev-2be9") if hasattr(st, "secrets") else "chronicle-dev-2be9"))
-            bq_dataset = st.text_input("Dataset", value=(st.secrets.get("bq_dataset", "soc_data") if hasattr(st, "secrets") else "soc_data"))
-            bq_table = st.text_input("Table", value=(st.secrets.get("bq_table", "processed_alerts") if hasattr(st, "secrets") else "processed_alerts"))
+            default_proj = EnhancedSOCDashboard._secret("bq_project", "chronicle-dev-2be9")
+            default_ds = EnhancedSOCDashboard._secret("bq_dataset", "soc_data")
+            default_tbl = EnhancedSOCDashboard._secret("bq_table", "processed_alerts")
+            bq_project = st.text_input("GCP Project", value=default_proj)
+            bq_dataset = st.text_input("Dataset", value=default_ds)
+            bq_table = st.text_input("Table", value=default_tbl)
             window_minutes = st.slider("Time Window (minutes)", min_value=1, max_value=120, value=5)
             limit = st.slider("Max Events", min_value=5, max_value=200, value=20)
         # Save config
