@@ -215,13 +215,24 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
     try:
         # Initialize client
         if auth_method == "Application Default Credentials":
-            client = bigquery.Client(project=project_id)
+            try:
+                client = bigquery.Client(project=project_id)
+                st.success("✅ BigQuery client initialized with ADC")
+            except Exception as e:
+                st.error(f"❌ ADC authentication failed: {str(e)}")
+                return pd.DataFrame(), {}
         else:
             if service_account_key:
-                key_data = json.loads(service_account_key.getvalue())
-                credentials = service_account.Credentials.from_service_account_info(key_data)
-                client = bigquery.Client(credentials=credentials, project=project_id)
+                try:
+                    key_data = json.loads(service_account_key.getvalue())
+                    credentials = service_account.Credentials.from_service_account_info(key_data)
+                    client = bigquery.Client(credentials=credentials, project=project_id)
+                    st.success("✅ BigQuery client initialized with Service Account")
+                except Exception as e:
+                    st.error(f"❌ Service Account authentication failed: {str(e)}")
+                    return pd.DataFrame(), {}
             else:
+                st.error("❌ No authentication method provided")
                 return pd.DataFrame(), {}
         
         # Fetch events - adapted for your table structure
@@ -235,7 +246,9 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
         LIMIT {limit}
         """
         
+        st.info("🔍 Executing BigQuery query...")
         events_df = client.query(events_query).to_dataframe()
+        st.success(f"✅ Query successful! Retrieved {len(events_df)} rows")
         
         # Process the data to make it more readable
         if not events_df.empty:
@@ -255,6 +268,7 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
                 events_df['destination_ip'] = '10.0.0.' + np.random.randint(1, 255, size=len(events_df)).astype(str)
         
         # Get metrics
+        st.info("📊 Getting metrics...")
         metrics_query = f"""
         SELECT 
             COUNT(*) as total_events,
@@ -269,6 +283,7 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
                 'total_events': row.total_events,
                 'unique_sources': row.unique_alarms
             }
+            st.success(f"📈 Metrics: {row.total_events:,} events, {row.unique_alarms:,} unique alarms")
         
         return events_df, metrics
         
@@ -383,13 +398,13 @@ if "📡 Telemetry Ingestion" in sections:
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.metric("Total Events", metrics.get('total_events', 0), "🔴 BigQuery")
+                    st.metric("Total Events", f"{metrics.get('total_events', 0):,}", "🔥 REAL BigQuery Data")
                 with col2:
-                    st.metric("Unique Sources", metrics.get('unique_sources', 0), "🔴 BigQuery")
+                    st.metric("Unique Sources", f"{metrics.get('unique_sources', 0):,}", "🔥 REAL BigQuery Data") 
                 with col3:
                     st.metric("Data Source", "BigQuery", "🟢 Connected")
                 with col4:
-                    st.metric("Table Rows", f"{len(df_events):,}", "Live Data")
+                    st.metric("Table Rows", f"{len(df_events):,}", "🔥 Live SIEM Data")
                     
             except Exception as e:
                 st.error(f"BigQuery connection error: {str(e)}")
