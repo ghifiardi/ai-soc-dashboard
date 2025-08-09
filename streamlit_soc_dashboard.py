@@ -10,12 +10,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import json
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 import uuid
+import importlib
 
 # Configure Streamlit page
 st.set_page_config(
@@ -150,6 +151,18 @@ class EnhancedSOCDashboard:
     def __init__(self):
         self.initialize_state()
         self.setup_mock_data()
+        self.data_source: str = "Mock"
+        self.bigquery_config: Dict[str, Any] = {
+            "project": None,
+            "dataset": None,
+            "table": None,
+            "window_minutes": 5,
+            "limit": 10,
+        }
+        self._bigquery_module = None
+        self.bq_client = None
+        self.bq_available = False
+        self.setup_bigquery()
         
     def initialize_state(self):
         """Initialize session state"""
@@ -179,6 +192,91 @@ class EnhancedSOCDashboard:
             "T1003 - OS Credential Dumping",
             "T1486 - Data Encrypted for Impact"
         ]
+
+    def setup_bigquery(self) -> None:
+        """Attempt to initialize BigQuery client if credentials are available.
+        Works with Streamlit Cloud secrets or local ADC.
+        """
+        try:
+            self._bigquery_module = importlib.import_module("google.cloud.bigquery")
+        except Exception:
+            self._bigquery_module = None
+            self.bq_available = False
+            return
+
+        try:
+            # Preferred: service account provided via Streamlit secrets
+            if "bigquery_credentials" in st.secrets:
+                credentials_info = st.secrets["bigquery_credentials"]
+                self.bq_client = self._bigquery_module.Client.from_service_account_info(credentials_info)
+            else:
+                # Fallback: Application Default Credentials
+                default_project = st.secrets.get("bq_project", None) if hasattr(st, "secrets") else None
+                self.bq_client = self._bigquery_module.Client(project=default_project)
+            self.bq_available = True
+        except Exception:
+            self.bq_client = None
+            self.bq_available = False
+
+    def _default_bq_table(self) -> str:
+        project = self.bigquery_config.get("project") or (st.secrets.get("bq_project", None) if hasattr(st, "secrets") else None) or "chronicle-dev-2be9"
+        dataset = self.bigquery_config.get("dataset") or (st.secrets.get("bq_dataset", None) if hasattr(st, "secrets") else None) or "soc_data"
+        table = self.bigquery_config.get("table") or (st.secrets.get("bq_table", None) if hasattr(st, "secrets") else None) or "processed_alerts"
+        return f"`{project}.{dataset}.{table}`"
+
+    def fetch_bigquery_events(self) -> List[Dict[str, Any]]:
+        """Fetch recent telemetry/alerts from BigQuery and normalize for display.
+        Expects a table with at least a timestamp column named 'timestamp'.
+        """
+        if not (self.bq_available and self.bq_client and self._bigquery_module):
+            return []
+
+        table_ref_sql = self._default_bq_table()
+        minutes = int(self.bigquery_config.get("window_minutes", 5))
+        limit = int(self.bigquery_config.get("limit", 10))
+
+        query = f'''
+            SELECT *
+            FROM {table_ref_sql}
+            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {minutes} MINUTE)
+            ORDER BY timestamp DESC
+            LIMIT {limit}
+        '''
+
+        try:
+            df = self.bq_client.query(query).to_dataframe()
+        except Exception:
+            return []
+
+        events: List[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            row_dict = row.to_dict()
+            # Normalize for display
+            events.append({
+                "id": row_dict.get("alert_id") or row_dict.get("id") or str(uuid.uuid4())[:8],
+                "timestamp": row_dict.get("timestamp") or datetime.utcnow(),
+                "type": row_dict.get("classification") or row_dict.get("type") or "network",
+                "severity": self._infer_severity(row_dict.get("classification"), row_dict.get("confidence_score")),
+                "source_ip": row_dict.get("source_ip", "N/A"),
+                "destination_ip": row_dict.get("destination_ip", "N/A"),
+                "mitre_technique": row_dict.get("mitre_technique", "N/A"),
+                "confidence_score": float(row_dict.get("confidence_score")) if row_dict.get("confidence_score") is not None else np.random.uniform(0.4, 0.95),
+                "cisa_validated": bool(row_dict.get("cisa_validated")) if "cisa_validated" in row_dict else None,
+                "classification": row_dict.get("classification")
+            })
+        return events
+
+    @staticmethod
+    def _infer_severity(classification: Any, confidence: Any) -> str:
+        try:
+            conf = float(confidence) if confidence is not None else 0.5
+        except Exception:
+            conf = 0.5
+        if classification in ("anomaly", "critical", "high") or conf >= 0.85:
+            return "high"
+        if classification in ("benign", "low") or conf < 0.5:
+            return "low"
+        return "medium"
     
     def generate_telemetry_event(self) -> Dict[str, Any]:
         """Generate realistic telemetry event"""
@@ -260,55 +358,63 @@ class EnhancedSOCDashboard:
         """Render telemetry ingestion section"""
         st.header("📡 Telemetry Ingestion & Validation")
         
+        # Source-aware fetch
+        if self.data_source == "BigQuery" and self.bq_available:
+            events = self.fetch_bigquery_events()
+            window_minutes = int(self.bigquery_config.get("window_minutes", 5))
+        else:
+            # Fallback: generate mock events
+            events = [self.generate_telemetry_event() for _ in range(10)]
+            window_minutes = 1
+
+        # Compute metrics (robust to missing fields)
+        total_events = len(events)
+        events_per_sec = total_events / max(window_minutes * 60, 1)
+        cisa_vals = [e.get("cisa_validated") for e in events if e.get("cisa_validated") is not None]
+        cisa_rate = (sum(1 for v in cisa_vals if v) / len(cisa_vals) * 100) if cisa_vals else None
+        ioc_matches = sum(1 for e in events if e.get("ioc_match") or (e.get("classification") == "anomaly"))
+        quarantined = sum(1 for e in events if e.get("quarantined")) if any("quarantined" in e for e in events) else None
+        benign_count = sum(1 for e in events if e.get("classification") == "benign")
+        false_pos_rate = (benign_count / total_events * 100) if total_events else None
+
         # Real-time metrics
         col1, col2, col3, col4, col5 = st.columns(5)
-        
         with col1:
-            events_per_sec = np.random.randint(7000, 12000)
-            st.metric("Events/sec", f"{events_per_sec:,}", f"↑ {np.random.randint(5, 15)}%")
-        
+            st.metric("Events/sec", f"{events_per_sec:,.2f}")
         with col2:
-            validation_rate = 99.7 + np.random.uniform(-0.5, 0.3)
-            st.metric("CISA Validation", f"{validation_rate:.1f}%", f"↑ {np.random.uniform(0.1, 0.5):.1f}%")
-        
+            st.metric("CISA Validation", f"{cisa_rate:.1f}%" if cisa_rate is not None else "—")
         with col3:
-            st.metric("IoC Matches", np.random.randint(15, 35), f"↑ {np.random.randint(1, 8)}")
-        
+            st.metric("IoC Matches", f"{ioc_matches:,}")
         with col4:
-            st.metric("Quarantined", np.random.randint(3, 12), f"↓ {np.random.randint(1, 5)}")
-        
+            st.metric("Quarantined", f"{quarantined:,}" if quarantined is not None else "—")
         with col5:
-            st.metric("False Positives", f"{np.random.uniform(0.5, 2.5):.1f}%", "↓ 0.3%")
-        
+            st.metric("False Positives", f"{false_pos_rate:.1f}%" if false_pos_rate is not None else "—")
+
         # Live telemetry stream
         st.subheader("🔴 Live Telemetry Stream")
         
+        severity_emoji = {"low": "🟢", "medium": "🟡", "high": "🟠", "critical": "🔴"}
         telemetry_container = st.container()
         with telemetry_container:
-            # Generate and display recent events
-            for _ in range(3):
-                event = self.generate_telemetry_event()
-                
-                severity_emoji = {
-                    'low': '🟢',
-                    'medium': '🟡', 
-                    'high': '🟠',
-                    'critical': '🔴'
-                }
-                
-                validation_status = "✅ CISA Validated" if event['cisa_validated'] else "⚠️ Validation Failed"
-                
-                st.markdown(f"""
+            for event in events[: min(3, len(events))]:
+                sev = event.get("severity") or self._infer_severity(event.get("classification"), event.get("confidence_score"))
+                validation_status = (
+                    "✅ CISA Validated" if event.get("cisa_validated") else ("⚠️ Validation Failed" if event.get("cisa_validated") is False else "—")
+                )
+                st.markdown(
+                    f"""
                 <div class="telemetry-card">
-                    <strong>{severity_emoji[event['severity']]} Event ID: {event['id']}</strong><br>
-                    <strong>Type:</strong> {event['type'].upper()} | 
-                    <strong>Severity:</strong> {event['severity'].upper()}<br>
-                    <strong>Source:</strong> {event['source_ip']} → {event['destination_ip']}<br>
-                    <strong>MITRE:</strong> {event['mitre_technique']}<br>
-                    <strong>Confidence:</strong> {event['confidence_score']:.1%} | 
+                    <strong>{severity_emoji.get(sev, '🟡')} Event ID: {event.get('id','N/A')}</strong><br>
+                    <strong>Type:</strong> {(event.get('type','N/A')).upper()} | 
+                    <strong>Severity:</strong> {(sev or 'N/A').upper()}<br>
+                    <strong>Source:</strong> {event.get('source_ip','N/A')} → {event.get('destination_ip','N/A')}<br>
+                    <strong>MITRE:</strong> {event.get('mitre_technique','N/A')}<br>
+                    <strong>Confidence:</strong> {float(event.get('confidence_score', 0.0)):.1%} | 
                     <strong>Status:</strong> {validation_status}
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
     
     def render_ai_enrichment(self):
         """Render AI enrichment section"""
@@ -557,6 +663,27 @@ def main():
     
     # Sidebar navigation
     st.sidebar.title("🛡️ SOC Command Center")
+    st.sidebar.subheader("Data Source")
+    data_source = st.sidebar.radio("Telemetry Source", ["Mock", "BigQuery"], horizontal=True)
+    
+    # Attach selection to dashboard instance
+    dashboard.data_source = data_source
+    
+    if data_source == "BigQuery":
+        with st.sidebar.expander("BigQuery Settings", expanded=False):
+            bq_project = st.text_input("GCP Project", value=(st.secrets.get("bq_project", "chronicle-dev-2be9") if hasattr(st, "secrets") else "chronicle-dev-2be9"))
+            bq_dataset = st.text_input("Dataset", value=(st.secrets.get("bq_dataset", "soc_data") if hasattr(st, "secrets") else "soc_data"))
+            bq_table = st.text_input("Table", value=(st.secrets.get("bq_table", "processed_alerts") if hasattr(st, "secrets") else "processed_alerts"))
+            window_minutes = st.slider("Time Window (minutes)", min_value=1, max_value=120, value=5)
+            limit = st.slider("Max Events", min_value=5, max_value=200, value=20)
+        # Save config
+        dashboard.bigquery_config.update({
+            "project": bq_project,
+            "dataset": bq_dataset,
+            "table": bq_table,
+            "window_minutes": window_minutes,
+            "limit": limit,
+        })
     
     sections = st.sidebar.multiselect(
         "Select Dashboard Sections",
