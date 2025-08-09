@@ -713,27 +713,51 @@ def main():
     
     # Render selected sections
     if "📡 Telemetry Ingestion" in sections:
-        dashboard.render_telemetry_ingestion()
+        try:
+            dashboard.render_telemetry_ingestion()
+        except Exception as e:
+            st.error("Error rendering Telemetry section")
+            st.exception(e)
         st.markdown("---")
     
     if "🤖 AI Enrichment" in sections:
-        dashboard.render_ai_enrichment()
+        try:
+            dashboard.render_ai_enrichment()
+        except Exception as e:
+            st.error("Error rendering AI Enrichment section")
+            st.exception(e)
         st.markdown("---")
     
     if "⚖️ Risk Decisions" in sections:
-        dashboard.render_risk_decision_engine()
+        try:
+            dashboard.render_risk_decision_engine()
+        except Exception as e:
+            st.error("Error rendering Risk Decisions section")
+            st.exception(e)
         st.markdown("---")
     
     if "🔧 Patch Management" in sections:
-        dashboard.render_patch_management()
+        try:
+            dashboard.render_patch_management()
+        except Exception as e:
+            st.error("Error rendering Patch Management section")
+            st.exception(e)
         st.markdown("---")
     
     if "📊 Compliance" in sections:
-        dashboard.render_compliance_reporting()
+        try:
+            dashboard.render_compliance_reporting()
+        except Exception as e:
+            st.error("Error rendering Compliance section")
+            st.exception(e)
         st.markdown("---")
     
     if "⚙️ System Health" in sections:
-        dashboard.render_system_health()
+        try:
+            dashboard.render_system_health()
+        except Exception as e:
+            st.error("Error rendering System Health section")
+            st.exception(e)
     
     # Auto-refresh logic
     if auto_refresh:
@@ -742,6 +766,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        st.write("")  # ensure something renders even if header fails
+        main()
+    except Exception as app_error:
+        st.error("App failed to start")
+        st.exception(app_error)
 
 
