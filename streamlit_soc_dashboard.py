@@ -224,6 +224,29 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
                     )
                     client = bigquery.Client(credentials=credentials, project=project_id)
                     st.success("✅ BigQuery client initialized with Streamlit Secrets")
+                elif "impersonation_service_account" in st.secrets:
+                    st.info("🔑 Using Service Account Impersonation from Secrets")
+                    try:
+                        import google.auth
+                        from google.auth import impersonated_credentials
+                        
+                        # Get source credentials (default)
+                        source_credentials, _ = google.auth.default()
+                        
+                        # Create impersonated credentials
+                        target_credentials = impersonated_credentials.Credentials(
+                            source_credentials=source_credentials,
+                            target_principal=st.secrets["impersonation_service_account"],
+                            target_scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                        )
+                        
+                        client = bigquery.Client(credentials=target_credentials, project=project_id)
+                        st.success("✅ BigQuery client initialized with Service Account Impersonation")
+                    except Exception as imp_error:
+                        st.error(f"❌ Impersonation failed: {str(imp_error)}")
+                        # Fallback to regular ADC
+                        client = bigquery.Client(project=project_id)
+                        st.warning("⚠️ Falling back to ADC")
                 else:
                     # Fallback to ADC (for local development)
                     client = bigquery.Client(project=project_id)
