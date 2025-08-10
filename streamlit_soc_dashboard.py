@@ -242,6 +242,8 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
                         
                         client = bigquery.Client(credentials=target_credentials, project=project_id)
                         st.success("✅ BigQuery client initialized with Service Account Impersonation")
+                        st.info(f"🔍 Impersonating: {st.secrets['impersonation_service_account']}")
+                        st.info(f"🔍 Project: {project_id}")
                     except Exception as imp_error:
                         st.error(f"❌ Impersonation failed: {str(imp_error)}")
                         # Fallback to regular ADC
@@ -280,9 +282,21 @@ def fetch_bigquery_data(project_id, dataset_id, table_id, auth_method, service_a
         LIMIT {limit}
         """
         
-        st.info("🔍 Executing BigQuery query...")
-        events_df = client.query(events_query).to_dataframe()
-        st.success(f"✅ Query successful! Retrieved {len(events_df)} rows")
+        st.info("�� Executing BigQuery query...")
+        st.code(events_query, language="sql")  # Show the actual query
+        
+        try:
+            query_job = client.query(events_query)
+            st.info(f"📊 Query job started: {query_job.job_id}")
+            events_df = query_job.to_dataframe()
+            st.success(f"✅ Query successful! Retrieved {len(events_df)} rows")
+            if len(events_df) == 0:
+                st.warning("⚠️ Query returned 0 rows - checking table exists")
+        except Exception as query_error:
+            st.error(f"❌ BigQuery query failed: {str(query_error)}")
+            st.error(f"❌ Query error type: {type(query_error).__name__}")
+            st.code(events_query, language="sql")
+            return pd.DataFrame(), {}
         
         # Process the data to make it more readable
         if not events_df.empty:
