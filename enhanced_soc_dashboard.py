@@ -288,11 +288,36 @@ if 'date_range' not in st.session_state:
 
 # Helper Functions
 def try_bigquery_connection():
-    """Attempt BigQuery connection with detailed feedback"""
+    """Attempt BigQuery connection with detailed feedback and fast timeout"""
     try:
+        # Add timeout to prevent hanging
+        import signal
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError("BigQuery connection timeout")
+
+        # Set 5 second timeout (only works on Unix-like systems)
+        try:
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(5)
+        except:
+            pass  # Signal not available on Windows
+
         from google.cloud import bigquery
 
-        client = bigquery.Client(project="chronicle-dev-2be9")
+        # Try to use Streamlit secrets first (for cloud deployment)
+        try:
+            import streamlit as st
+            if "gcp_service_account" in st.secrets:
+                from google.oauth2 import service_account
+                credentials = service_account.Credentials.from_service_account_info(
+                    st.secrets["gcp_service_account"]
+                )
+                client = bigquery.Client(credentials=credentials, project="chronicle-dev-2be9")
+            else:
+                client = bigquery.Client(project="chronicle-dev-2be9")
+        except:
+            client = bigquery.Client(project="chronicle-dev-2be9")
 
         query = """
         SELECT
@@ -301,7 +326,7 @@ def try_bigquery_connection():
         FROM `chronicle-dev-2be9.gatra_database.siem_events`
         """
 
-        result = client.query(query).result()
+        result = client.query(query).result(timeout=5)  # Add query timeout
 
         for row in result:
             sample_query = """
@@ -316,6 +341,12 @@ def try_bigquery_connection():
 
             sample_result = client.query(sample_query).to_dataframe()
 
+            # Disable alarm
+            try:
+                signal.alarm(0)
+            except:
+                pass
+
             return {
                 'success': True,
                 'total_events': row.total_events,
@@ -324,6 +355,12 @@ def try_bigquery_connection():
             }
 
     except Exception as e:
+        # Disable alarm
+        try:
+            signal.alarm(0)
+        except:
+            pass
+
         return {
             'success': False,
             'error': str(e),
@@ -734,8 +771,8 @@ with st.sidebar:
 st.markdown('<h1 class="header-title">🛡️ AI-SOC COMMAND CENTER</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Enterprise Security Operations | Real-time Threat Intelligence & Advanced Analytics</p>', unsafe_allow_html=True)
 
-# Try BigQuery connection
-with st.spinner("🔍 Establishing secure connection to BigQuery..."):
+# Try BigQuery connection (will fallback to demo data if unavailable)
+with st.spinner("🔍 Checking data sources..."):
     bigquery_result = try_bigquery_connection()
 
 # Connection Status
