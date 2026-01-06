@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # Enhanced SOC Dashboard - Main operational dashboard
+  enhanced-soc:
+    build: .
+    container_name: ai-soc-enhanced
+    ports:
+      - "8501:8501"
+    environment:
+      - DASHBOARD_NAME=Enhanced SOC Dashboard
+    command: ["enhanced_soc_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Executive Dashboard - C-suite view
+  executive:
+    build: .
+    container_name: ai-soc-executive
+    ports:
+      - "8502:8501"
+    environment:
+      - DASHBOARD_NAME=Executive Dashboard
+    command: ["executive_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Compliance Dashboard - Audit and compliance tracking
+  compliance:
+    build: .
+    container_name: ai-soc-compliance
+    ports:
+      - "8503:8501"
+    environment:
+      - DASHBOARD_NAME=Compliance Dashboard
+    command: ["compliance_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Original Dashboard - BigQuery integration
+  original:
+    build: .
+    container_name: ai-soc-original
+    ports:
+      - "8504:8501"
+    environment:
+      - DASHBOARD_NAME=Original Dashboard
+    command: ["streamlit_soc_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Optional: Add nginx reverse proxy for single entry point
+# Uncomment below to enable
+
+#  nginx:
+#    image: nginx:alpine
+#    container_name: ai-soc-proxy
+#    ports:
+#      - "80:80"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#    depends_on:
+#      - enhanced-soc
+#      - executive
+#      - compliance
+#      - original
+#    restart: unless-stopped
+
+networks:
+  default:
+    name: ai-soc-network
