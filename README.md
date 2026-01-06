@@ -5,12 +5,13 @@ A comprehensive suite of enterprise-grade Security Operations Center (SOC) dashb
 
 ## 🌟 Overview
 
-This project provides **four specialized dashboards** designed for different stakeholders in your security operations:
+This project provides **five specialized dashboards** designed for different stakeholders in your security operations:
 
 1. **🛡️ Enhanced SOC Dashboard** - Full-featured operational dashboard for SOC analysts
 2. **🎯 Executive Dashboard** - Strategic overview for C-suite and management
 3. **📜 Compliance Dashboard** - Regulatory compliance tracking and audit management
-4. **🔥 Original SOC Dashboard** - Streamlined operational view with BigQuery integration
+4. **🔍 Threat Hunting Dashboard** - AI-powered proactive threat hunting and investigation
+5. **🔥 Original SOC Dashboard** - Streamlined operational view with BigQuery integration
 
 ---
 
@@ -107,6 +108,56 @@ This project provides **four specialized dashboards** designed for different sta
 
 ---
 
+### 🔍 Threat Hunting Dashboard (`threat_hunting_dashboard.py`)
+
+**Target Audience:** Threat Hunters, SOC Analysts, Security Researchers
+
+**Key Features:**
+- **Real-Time Timestamp Generation** - All data uses current datetime (fixes old timestamp issue)
+- **AI/ML-Powered Alert Analysis** - 7 ML models for threat classification
+  - Random Forest, Neural Network, XGBoost, Isolation Forest, Deep Learning CNN
+  - True positive/false positive rate tracking
+  - Confidence scoring and threshold filtering
+- **Active Hunt Mission Management** - Track ongoing investigations
+  - Mission status (Active, Investigating, Completed, On Hold)
+  - IOC (Indicators of Compromise) tracking
+  - Priority classification (Critical, High, Medium, Low)
+  - Entity analysis and confidence scores
+- **Social Media Threat Monitoring** - Real-time threat detection from social platforms
+  - Twitter, Facebook, Instagram, LinkedIn, Reddit monitoring
+  - Keyword tracking and frequency analysis
+  - Threat score calculation and trend analysis
+  - Platform engagement metrics
+- **Security Alert Processing** - Live alert monitoring with AI classification
+  - Timestamps within last 24 hours (always current)
+  - Multi-source integration (SIEM, EDR, IDS/IPS, Firewall)
+  - Confidence-based filtering
+  - Hunt status tracking
+- **Advanced Analytics** - Behavioral threat analytics
+  - ML model confidence distribution
+  - Alert category predictions
+  - Hourly threat timeline analysis
+  - Keyword frequency distribution
+- **Hunt Controls** - Customizable hunting parameters
+  - Configurable time ranges (1 hour to 30 days)
+  - Hunt focus selection (APT, Insider Threat, Malware, C2, etc.)
+  - Confidence threshold slider
+  - Auto-refresh with configurable intervals
+
+**Notable Visualizations:**
+- Hunt mission status pie charts
+- Priority distribution bar charts
+- ML model confidence box plots
+- Social media threat timeline (dual-axis)
+- Top threat keywords frequency chart
+- Alert category heatmaps
+- Real-time data tables with current timestamps
+
+**Timestamp Fix:**
+All security alerts, social media threats, and hunt missions now generate timestamps relative to `datetime.now()`, ensuring data is always current and recent (no more October 2025 dates!).
+
+---
+
 ### 🔥 Original SOC Dashboard (`streamlit_soc_dashboard.py`)
 
 **Target Audience:** SOC Analysts, Security Operations
@@ -158,6 +209,11 @@ streamlit run executive_dashboard.py
 **Compliance Dashboard:**
 ```bash
 streamlit run compliance_dashboard.py
+```
+
+**Threat Hunting Dashboard:**
+```bash
+streamlit run threat_hunting_dashboard.py
 ```
 
 **Original SOC Dashboard:**
