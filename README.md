@@ -67,6 +67,17 @@ This project provides **five specialized dashboards** designed for different sta
 - Clear delta indicators showing improvement/degradation
 - Minimal technical jargon, maximum strategic insight
 
+**🆕 React Version Available:**
+A modern React implementation of the Executive Dashboard is now available at `react-executive-dashboard/`. This provides:
+- Enhanced performance and responsiveness
+- Modern component architecture with React 18
+- Interactive Recharts visualizations
+- Easier integration with web services and APIs
+- Standalone deployment to static hosting (Vercel, Netlify, etc.)
+- Full feature parity with Streamlit version
+
+See `react-executive-dashboard/README.md` for setup and deployment instructions.
+
 ---
 
 ### 📜 Compliance & Audit Dashboard (`compliance_dashboard.py`)
@@ -196,6 +207,8 @@ All security alerts, social media threats, and hunt missions now generate timest
 
 ### Running the Dashboards
 
+#### Streamlit Dashboards
+
 **Enhanced SOC Dashboard (Recommended):**
 ```bash
 streamlit run enhanced_soc_dashboard.py
@@ -222,6 +235,19 @@ streamlit run streamlit_soc_dashboard.py
 ```
 
 The dashboard will automatically open in your default browser at `http://localhost:8501`
+
+#### React Executive Dashboard
+
+**Navigate to React dashboard:**
+```bash
+cd react-executive-dashboard
+npm install
+npm run dev
+```
+
+The React dashboard will open at `http://localhost:3001`
+
+See `react-executive-dashboard/README.md` for detailed setup instructions and deployment options.
 
 ### Custom Port
 
@@ -325,14 +351,26 @@ Mock data generators can be customized in each dashboard file:
 ```
 ai-soc-dashboard/
 ├── enhanced_soc_dashboard.py      # Main enhanced dashboard
-├── executive_dashboard.py         # Executive/C-suite dashboard
+├── executive_dashboard.py         # Executive/C-suite dashboard (Streamlit)
 ├── compliance_dashboard.py        # Compliance & audit dashboard
-├── streamlit_soc_dashboard.py    # Original BigQuery dashboard
-├── requirements.txt              # Python dependencies
-├── README.md                     # This file
-├── config.py                     # Configuration settings
-├── config.toml                   # Streamlit config
-└── (legacy files)               # Historical dashboard variants
+├── threat_hunting_dashboard.py    # AI-powered threat hunting dashboard
+├── streamlit_soc_dashboard.py     # Original BigQuery dashboard
+├── react-executive-dashboard/     # React version of Executive Dashboard
+│   ├── src/
+│   │   ├── components/           # React components (KPIs, charts, etc.)
+│   │   ├── utils/                # Data generation utilities
+│   │   ├── App.jsx               # Main application
+│   │   └── App.css               # Global styles
+│   ├── package.json              # Node dependencies
+│   └── README.md                 # React dashboard documentation
+├── requirements.txt               # Python dependencies
+├── README.md                      # This file
+├── config.py                      # Configuration settings
+├── config.toml                    # Streamlit config
+├── Dockerfile                     # Docker container configuration
+├── docker-compose.yml             # Docker Compose orchestration
+├── DEPLOYMENT_GUIDE.md            # Comprehensive deployment guide
+└── (legacy files)                 # Historical dashboard variants
 ```
 
 ---
@@ -496,12 +534,13 @@ For issues, questions, or feature requests:
 
 ## 📊 Version History
 
+- **v2.1.0** - Added React version of Executive Dashboard with modern web stack
 - **v2.0.0** - Enhanced Edition with multiple specialized dashboards
 - **v1.0.0** - Initial release with basic SOC dashboard
 
 ---
 
-**Last Updated:** January 5, 2026
+**Last Updated:** January 6, 2026
 **Status:** ✅ Production Ready
 **Maintainer:** Development Team
 
