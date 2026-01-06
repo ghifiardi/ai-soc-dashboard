@@ -245,7 +245,7 @@ npm install
 npm run dev
 ```
 
-The React dashboard will open at `http://localhost:3000`
+The React dashboard will open at `http://localhost:3001`
 
 See `react-executive-dashboard/README.md` for detailed setup instructions and deployment options.
 
