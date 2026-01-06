@@ -15,6 +15,7 @@ import {
   generateRiskData,
   generateComplianceData
 } from './utils/dataGenerator';
+import { fetchExecutiveDashboard } from './utils/apiClient';
 
 function App() {
   const [period, setPeriod] = useState('Last 30 Days');
@@ -23,16 +24,35 @@ function App() {
   const [severityData, setSeverityData] = useState([]);
   const [riskData, setRiskData] = useState([]);
   const [complianceData, setComplianceData] = useState([]);
+  const [dataSource, setDataSource] = useState('loading'); // 'api', 'mock', or 'loading'
 
   useEffect(() => {
-    // Generate all data on mount
-    const metricsData = generateExecutiveData();
-    setMetrics(metricsData);
-    setTrendData(generateTrendData(30));
-    setSeverityData(generateSeverityData());
-    setRiskData(generateRiskData());
-    setComplianceData(generateComplianceData());
+    loadDashboardData();
   }, []);
+
+  const loadDashboardData = async () => {
+    // Try to fetch from API first
+    const apiData = await fetchExecutiveDashboard(30);
+
+    if (apiData) {
+      // Use real data from API
+      setMetrics(apiData.metrics);
+      setTrendData(apiData.trendData);
+      setSeverityData(apiData.severityData);
+      setRiskData(apiData.risks);
+      setComplianceData(apiData.compliance);
+      setDataSource('api');
+    } else {
+      // Fallback to mock data
+      const metricsData = generateExecutiveData();
+      setMetrics(metricsData);
+      setTrendData(generateTrendData(30));
+      setSeverityData(generateSeverityData());
+      setRiskData(generateRiskData());
+      setComplianceData(generateComplianceData());
+      setDataSource('mock');
+    }
+  };
 
   if (!metrics) {
     return (
@@ -95,6 +115,32 @@ function App() {
         <h1 className="executive-title">🎯 Executive Security Dashboard</h1>
         <p className="executive-subtitle">
           Strategic Overview | Security Posture | Business Risk Assessment
+          {dataSource === 'api' && (
+            <span style={{
+              marginLeft: '1rem',
+              padding: '0.25rem 0.75rem',
+              background: '#10B981',
+              color: 'white',
+              borderRadius: '12px',
+              fontSize: '0.75rem',
+              fontWeight: '600'
+            }}>
+              ● LIVE DATA
+            </span>
+          )}
+          {dataSource === 'mock' && (
+            <span style={{
+              marginLeft: '1rem',
+              padding: '0.25rem 0.75rem',
+              background: '#F59E0B',
+              color: 'white',
+              borderRadius: '12px',
+              fontSize: '0.75rem',
+              fontWeight: '600'
+            }}>
+              ● DEMO MODE
+            </span>
+          )}
         </p>
 
         {/* Period Selector */}
