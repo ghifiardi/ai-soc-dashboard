@@ -8,9 +8,8 @@ import pandas as pd
 import sqlite3
 import requests
 import json
-import os
-from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from datetime import datetime
+from typing import Dict
 import logging
 
 # Configure logging

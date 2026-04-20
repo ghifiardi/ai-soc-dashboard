@@ -8,7 +8,6 @@ import sqlite3
 import requests
 import json
 from datetime import datetime, timedelta
-import random
 
 def create_sample_database():
     """Create a comprehensive sample database with realistic security data"""
@@ -164,7 +163,7 @@ def create_sample_database():
     conn.close()
     
     print("✅ Sample database created with realistic data!")
-    print(f"📍 Database location: soc_data.db")
+    print("📍 Database location: soc_data.db")
     print(f"📊 Events: {len(sample_events)}")
     print(f"🖥️  Assets: {len(sample_assets)}")
     print(f"📋 Compliance frameworks: {len(compliance_data)}")

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import streamlit as st
-import pandas as pd
 from google.cloud import bigquery
 from google.api_core.exceptions import GoogleAPIError
 
